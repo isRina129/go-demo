@@ -1,0 +1,85 @@
+name: Deploy order service
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: fc-devops release ID
+        required: true
+        type: string
+      service_key:
+        description: Repository service key
+        required: true
+        type: string
+      git_tag:
+        description: Selected Git tag
+        required: true
+        type: string
+      commit_sha:
+        description: Immutable commit SHA resolved by fc-devops
+        required: true
+        type: string
+      deployment_mode:
+        description: fc-devops deployment mode
+        required: true
+        type: string
+      callback_token:
+        description: Artifact callback token
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fc-devops-order-${{ inputs.release_id }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_SERVICE_KEY: order
+      FC_DEVOPS_API_URL: ${{ vars.FC_DEVOPS_API_URL }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      SERVICE_KEY: ${{ inputs.service_key }}
+      GIT_TAG: ${{ inputs.git_tag }}
+      COMMIT_SHA: ${{ inputs.commit_sha }}
+      DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
+      CALLBACK_TOKEN: ${{ inputs.callback_token }}
+    steps:
+      - name: Validate dispatch
+        shell: bash
+        run: |
+          echo "::add-mask::$CALLBACK_TOKEN"
+          test "$SERVICE_KEY" = "$EXPECTED_SERVICE_KEY"
+          test "$DEPLOYMENT_MODE" = "CUSTOM_RUNTIME_ZIP"
+          test -n "$FC_DEVOPS_API_URL"
+
+      - name: Checkout immutable commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build Custom Runtime ZIP
+        env:
+          VERSION: ${{ inputs.git_tag }}
+        run: ./scripts/build-custom-runtime.sh order
+
+      - name: Upload and report artifact
+        run: ./scripts/publish-zip.sh dist/order.zip
