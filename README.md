@@ -41,6 +41,30 @@ unzip -l dist/order.zip
 unzip -l dist/user.zip
 ```
 
+## 初始化阿里云函数计算资源
+
+根目录的 `s.yaml` 使用 Serverless Devs FC3 组件定义了 `go-demo-order` 和
+`go-demo-user` 两个 Custom Runtime 函数。默认地域是 `cn-hangzhou`，部署前请按需修改
+`vars.region`。HTTP 触发器使用匿名鉴权，适合本示例公开访问；生产环境应根据实际情况改为
+函数鉴权或 JWT 鉴权。
+
+配置 Serverless Devs 的阿里云访问凭证后，可以同时初始化两个函数：
+
+```bash
+s deploy -y
+```
+
+也可以独立部署：
+
+```bash
+s order deploy -y
+s user deploy -y
+```
+
+每个资源的 `pre-deploy` 会调用对应的构建脚本，生成 Linux amd64 的 `bootstrap`。函数部署
+完成后，把 `go-demo-order` 和 `go-demo-user` 分别登记到 fc-devops 的 FC 函数资源清单，
+并绑定到对应的 Deployment Target。
+
 ## 推送到 GitHub
 
 先在 GitHub 创建一个不带 README、`.gitignore` 和 License 的空仓库 `go-demo`，然后执行：
@@ -71,7 +95,7 @@ Metadata: Read-only
 
 ## fc-devops 服务配置
 
-绑定仓库后创建两个 Repository Service：
+绑定仓库后创建两个 Deployment Unit：
 
 | 字段 | Order | User |
 |---|---|---|
@@ -103,8 +127,11 @@ service_key
 git_tag
 commit_sha
 deployment_mode
-callback_token
+artifact_token
+source_path
 ```
 
-Workflow 固定 checkout `commit_sha`，构建 ZIP，从 fc-devops 获取 OSS 预签名地址，上传后回调 ZIP 的 Bucket、Object Key、ETag、SHA256 和大小。
-
+其中前六项是平台必需输入，`source_path` 是当前示例 Workflow 声明的可选构建配置。
+Workflow 使用标准 `run-name` 关联发布记录，固定 checkout `commit_sha`，构建 ZIP 后使用
+`artifact_token` 从 fc-devops 获取 OSS 预签名地址并直接上传。Workflow 不再发送完成回调；
+fc-devops 会在发布流程中主动轮询 GitHub Actions 状态，并通过 OSS `HeadObject` 发现和校验产物。

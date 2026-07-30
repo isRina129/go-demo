@@ -1,4 +1,5 @@
 name: Deploy user service
+run-name: fc-devops-release-${{ inputs.release_id }}
 
 on:
   workflow_dispatch:
@@ -8,7 +9,7 @@ on:
         required: true
         type: string
       service_key:
-        description: Repository service key
+        description: Deployment unit key
         required: true
         type: string
       git_tag:
@@ -23,9 +24,13 @@ on:
         description: fc-devops deployment mode
         required: true
         type: string
-      callback_token:
-        description: Artifact callback token
+      artifact_token:
+        description: Short-lived artifact upload token
         required: true
+        type: string
+      source_path:
+        description: Source path configured by fc-devops
+        required: false
         type: string
 
 permissions:
@@ -40,19 +45,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXPECTED_SERVICE_KEY: user
+      EXPECTED_SOURCE_PATH: services/user
       FC_DEVOPS_API_URL: ${{ vars.FC_DEVOPS_API_URL }}
       RELEASE_ID: ${{ inputs.release_id }}
       SERVICE_KEY: ${{ inputs.service_key }}
       GIT_TAG: ${{ inputs.git_tag }}
       COMMIT_SHA: ${{ inputs.commit_sha }}
       DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
-      CALLBACK_TOKEN: ${{ inputs.callback_token }}
+      ARTIFACT_TOKEN: ${{ inputs.artifact_token }}
+      SOURCE_PATH: ${{ inputs.source_path }}
     steps:
       - name: Validate dispatch
         shell: bash
         run: |
-          echo "::add-mask::$CALLBACK_TOKEN"
+          echo "::add-mask::$ARTIFACT_TOKEN"
           test "$SERVICE_KEY" = "$EXPECTED_SERVICE_KEY"
+          test "$SOURCE_PATH" = "$EXPECTED_SOURCE_PATH"
           test "$DEPLOYMENT_MODE" = "CUSTOM_RUNTIME_ZIP"
           test -n "$FC_DEVOPS_API_URL"
 
@@ -81,5 +89,5 @@ jobs:
           VERSION: ${{ inputs.git_tag }}
         run: ./scripts/build-custom-runtime.sh user
 
-      - name: Upload and report artifact
+      - name: Upload artifact
         run: ./scripts/publish-zip.sh dist/user.zip

@@ -1,0 +1,105 @@
+edition: 3.0.0
+name: go-demo
+access: fc-devops
+
+vars:
+  region: cn-hangzhou
+
+resources:
+  order:
+    component: fc3
+    actions:
+      pre-deploy:
+        - run: ./scripts/build-custom-runtime.sh order
+          path: ./
+    props:
+      region: ${vars.region}
+      functionName: go-demo-order
+      description: Order API for the go-demo FC DevOps example
+      runtime: custom.debian10
+      code: ./dist/order
+      memorySize: 512
+      timeout: 30
+      instanceConcurrency: 10
+      internetAccess: true
+      customRuntimeConfig:
+        command:
+          - /code/bootstrap
+        port: 9000
+        healthCheckConfig:
+          httpGetUrl: /health
+          initialDelaySeconds: 0
+          periodSeconds: 3
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1
+      environmentVariables:
+        APP_ENV: production
+      tags:
+        - key: app
+          value: go-demo
+        - key: service
+          value: order
+      triggers:
+        - triggerName: http-trigger
+          triggerType: http
+          qualifier: LATEST
+          triggerConfig:
+            authType: anonymous
+            disableURLInternet: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - HEAD
+
+  user:
+    component: fc3
+    actions:
+      pre-deploy:
+        - run: ./scripts/build-custom-runtime.sh user
+          path: ./
+    props:
+      region: ${vars.region}
+      functionName: go-demo-user
+      description: User API for the go-demo FC DevOps example
+      runtime: custom.debian10
+      code: ./dist/user
+      memorySize: 512
+      timeout: 30
+      instanceConcurrency: 10
+      internetAccess: true
+      customRuntimeConfig:
+        command:
+          - /code/bootstrap
+        port: 9000
+        healthCheckConfig:
+          httpGetUrl: /health
+          initialDelaySeconds: 0
+          periodSeconds: 3
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1
+      environmentVariables:
+        APP_ENV: production
+      tags:
+        - key: app
+          value: go-demo
+        - key: service
+          value: user
+      triggers:
+        - triggerName: http-trigger
+          triggerType: http
+          qualifier: LATEST
+          triggerConfig:
+            authType: anonymous
+            disableURLInternet: false
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - HEAD
