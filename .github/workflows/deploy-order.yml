@@ -1,93 +1,84 @@
-name: Deploy order service
-run-name: fc-devops-release-${{ inputs.release_id }}
+name: 构建订单服务制品
+run-name: fc-devops-artifact-${{ inputs.artifact_id }}
 
 on:
   workflow_dispatch:
     inputs:
-      release_id:
-        description: fc-devops release ID
-        required: true
-        type: string
-      service_key:
-        description: Deployment unit key
+      artifact_id:
+        description: fc-devops 构建制品 ID
         required: true
         type: string
       git_tag:
-        description: Selected Git tag
+        description: 选中的 Git Tag
         required: true
         type: string
       commit_sha:
-        description: Immutable commit SHA resolved by fc-devops
+        description: fc-devops 解析出的固定提交 SHA
         required: true
         type: string
-      deployment_mode:
-        description: fc-devops deployment mode
+      artifact_type:
+        description: 构建制品类型
         required: true
         type: string
       artifact_token:
-        description: Short-lived artifact upload token
+        description: 短期制品凭证
         required: true
         type: string
-      source_path:
-        description: Source path configured by fc-devops
-        required: false
+      credentials_url:
+        description: STS 凭证交换地址
+        required: true
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: fc-devops-order-${{ inputs.release_id }}
+  group: fc-devops-order-${{ inputs.artifact_id }}
   cancel-in-progress: false
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     env:
-      EXPECTED_SERVICE_KEY: order
-      EXPECTED_SOURCE_PATH: services/order
-      FC_DEVOPS_API_URL: ${{ vars.FC_DEVOPS_API_URL }}
-      RELEASE_ID: ${{ inputs.release_id }}
-      SERVICE_KEY: ${{ inputs.service_key }}
+      ARTIFACT_ID: ${{ inputs.artifact_id }}
       GIT_TAG: ${{ inputs.git_tag }}
       COMMIT_SHA: ${{ inputs.commit_sha }}
-      DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
+      ARTIFACT_TYPE: ${{ inputs.artifact_type }}
       ARTIFACT_TOKEN: ${{ inputs.artifact_token }}
-      SOURCE_PATH: ${{ inputs.source_path }}
+      CREDENTIALS_URL: ${{ inputs.credentials_url }}
     steps:
-      - name: Validate dispatch
+      - name: 校验平台输入
         shell: bash
         run: |
           echo "::add-mask::$ARTIFACT_TOKEN"
-          test "$SERVICE_KEY" = "$EXPECTED_SERVICE_KEY"
-          test "$SOURCE_PATH" = "$EXPECTED_SOURCE_PATH"
-          test "$DEPLOYMENT_MODE" = "CUSTOM_RUNTIME_ZIP"
-          test -n "$FC_DEVOPS_API_URL"
+          test -n "$ARTIFACT_ID"
+          test "$ARTIFACT_TYPE" = "ZIP"
+          test -n "$CREDENTIALS_URL"
 
-      - name: Checkout immutable commit
+      - name: 检出固定提交
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.commit_sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify commit
+      - name: 校验提交
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
 
-      - name: Set up Go
+      - name: 配置 Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Test
+      - name: 执行测试
         run: go test ./...
 
-      - name: Build Custom Runtime ZIP
+      - name: 构建函数压缩包
         env:
           VERSION: ${{ inputs.git_tag }}
         run: ./scripts/build-custom-runtime.sh order
 
-      - name: Upload artifact
+      - name: 使用 STS 上传制品
         run: ./scripts/publish-zip.sh dist/order.zip

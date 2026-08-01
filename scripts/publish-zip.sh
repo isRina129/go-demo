@@ -8,19 +8,19 @@ if [[ $# -ne 1 ]]; then
 fi
 
 artifact="$1"
-: "${FC_DEVOPS_API_URL:?FC_DEVOPS_API_URL is required}"
-: "${RELEASE_ID:?RELEASE_ID is required}"
+: "${ARTIFACT_ID:?ARTIFACT_ID is required}"
 : "${ARTIFACT_TOKEN:?ARTIFACT_TOKEN is required}"
+: "${CREDENTIALS_URL:?CREDENTIALS_URL is required}"
 
 if [[ ! -s "$artifact" ]]; then
   echo "artifact does not exist or is empty: $artifact" >&2
   exit 2
 fi
 
-api_url="${FC_DEVOPS_API_URL%/}"
-upload_response="$(mktemp)"
+credential_response="$(mktemp)"
+ossutil_config="$(mktemp)"
 cleanup() {
-  rm -f "$upload_response"
+  rm -f "$credential_response" "$ossutil_config"
 }
 trap cleanup EXIT
 
@@ -29,36 +29,47 @@ curl --fail-with-body --silent --show-error \
   -X POST \
   -H "Authorization: Bearer $ARTIFACT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"content_type":"application/zip"}' \
-  "$api_url/api/v1/releases/$RELEASE_ID/artifacts/upload-url" \
-  > "$upload_response"
+  "$CREDENTIALS_URL" \
+  > "$credential_response"
 
-bucket="$(jq -r '.data.bucket' "$upload_response")"
-object_key="$(jq -r '.data.object_key' "$upload_response")"
-method="$(jq -r '.data.method' "$upload_response")"
-upload_url="$(jq -r '.data.url' "$upload_response")"
+access_key_id="$(jq -r '.data.access_key_id' "$credential_response")"
+access_key_secret="$(jq -r '.data.access_key_secret' "$credential_response")"
+security_token="$(jq -r '.data.security_token' "$credential_response")"
+region="$(jq -r '.data.region' "$credential_response")"
+bucket="$(jq -r '.data.oss.bucket' "$credential_response")"
+object_key="$(jq -r '.data.oss.object_key' "$credential_response")"
 
-if [[ -z "$bucket" || "$bucket" == "null" ||
+if [[ -z "$access_key_id" || "$access_key_id" == "null" ||
+      -z "$access_key_secret" || "$access_key_secret" == "null" ||
+      -z "$security_token" || "$security_token" == "null" ||
+      -z "$region" || "$region" == "null" ||
+      -z "$bucket" || "$bucket" == "null" ||
       -z "$object_key" || "$object_key" == "null" ||
-      -z "$method" || "$method" == "null" ||
-      -z "$upload_url" || "$upload_url" == "null" ]]; then
-  echo "fc-devops returned an incomplete upload response" >&2
+      "$(jq -r '.data.artifact_type' "$credential_response")" != "ZIP" ]]; then
+  echo "fc-devops returned incomplete STS credentials or OSS destination" >&2
   exit 1
 fi
 
-curl_args=()
-while IFS= read -r header; do
-  key="$(jq -r '.key' <<< "$header")"
-  value="$(jq -r '.value' <<< "$header")"
-  curl_args+=(-H "$key: $value")
-done < <(jq -c '(.data.headers // {}) | to_entries[]' "$upload_response")
+echo "::add-mask::$access_key_id"
+echo "::add-mask::$access_key_secret"
+echo "::add-mask::$security_token"
 
-curl --fail-with-body --silent --show-error \
-  --retry 3 --retry-all-errors \
-  -X "$method" \
-  "${curl_args[@]}" \
-  --upload-file "$artifact" \
-  "$upload_url" \
-  > /dev/null
+ossutil_version="${OSSUTIL_VERSION:-1.7.19}"
+curl --fail --silent --show-error --retry 3 \
+  "https://gosspublic.alicdn.com/ossutil/${ossutil_version}/ossutil64" \
+  --output "$RUNNER_TEMP/ossutil"
+chmod +x "$RUNNER_TEMP/ossutil"
+
+"$RUNNER_TEMP/ossutil" config \
+  -e "https://oss-${region}.aliyuncs.com" \
+  -i "$access_key_id" \
+  -k "$access_key_secret" \
+  -t "$security_token" \
+  -L CH \
+  -c "$ossutil_config"
+
+"$RUNNER_TEMP/ossutil" cp \
+  "$artifact" "oss://$bucket/$object_key" \
+  -f -c "$ossutil_config"
 
 echo "uploaded artifact to oss://$bucket/$object_key"
