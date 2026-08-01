@@ -55,12 +55,24 @@ echo "::add-mask::$access_key_secret"
 echo "::add-mask::$security_token"
 
 ossutil_version="${OSSUTIL_VERSION:-1.7.19}"
-curl --fail --silent --show-error --retry 3 \
-  "https://gosspublic.alicdn.com/ossutil/${ossutil_version}/ossutil64" \
-  --output "$RUNNER_TEMP/ossutil"
-chmod +x "$RUNNER_TEMP/ossutil"
+ossutil_package="ossutil-v${ossutil_version}-linux-amd64"
+ossutil_archive="$RUNNER_TEMP/${ossutil_package}.zip"
+ossutil_download_url="https://gosspublic.alicdn.com/ossutil/${ossutil_version}/${ossutil_package}.zip"
+ossutil_binary="$RUNNER_TEMP/${ossutil_package}/ossutil64"
 
-"$RUNNER_TEMP/ossutil" config \
+echo "downloading ossutil ${ossutil_version} from ${ossutil_download_url}"
+curl --fail-with-body --location --silent --show-error \
+  --retry 3 --retry-all-errors \
+  "$ossutil_download_url" \
+  --output "$ossutil_archive"
+
+if [[ "$ossutil_version" == "1.7.19" ]]; then
+  echo "dcc512e4a893e16bbee63bc769339d8e56b21744fd83c8212a9d8baf28767343  $ossutil_archive" | sha256sum --check --status
+fi
+unzip -q -o "$ossutil_archive" -d "$RUNNER_TEMP"
+chmod +x "$ossutil_binary"
+
+"$ossutil_binary" config \
   -e "https://oss-${region}.aliyuncs.com" \
   -i "$access_key_id" \
   -k "$access_key_secret" \
@@ -68,7 +80,7 @@ chmod +x "$RUNNER_TEMP/ossutil"
   -L CH \
   -c "$ossutil_config"
 
-"$RUNNER_TEMP/ossutil" cp \
+"$ossutil_binary" cp \
   "$artifact" "oss://$bucket/$object_key" \
   -f -c "$ossutil_config"
 

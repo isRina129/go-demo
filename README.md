@@ -116,6 +116,8 @@ git push origin order/v1.0.0 user/v1.0.0
 ```
 
 Tag push 不会自动构建或部署。进入 fc-devops 的“构建制品”，选择服务部署配置和对应 Tag 后发起构建。
+所选 Tag 指向的提交必须已经包含下面这套新版 Workflow 输入；只更新默认分支不会改变已有 Tag 中的 Workflow。
+Workflow 协议调整后应创建新 Tag，不要复用旧 Tag。
 
 fc-devops 会向选中服务的 workflow 传入：
 
