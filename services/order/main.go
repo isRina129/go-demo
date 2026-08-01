@@ -10,11 +10,11 @@ import (
 )
 
 func registerRoutes(group *gin.RouterGroup) {
-	group.GET("1", func(c *gin.Context) {
+	group.GET("/orders/:order_id", func(c *gin.Context) {
 		orderID := c.Param("order_id")
 		c.JSON(http.StatusOK, gin.H{
 			"id":      orderID,
-			"status":  "PAID-HAHA",
+			"status":  "PAID-HHHHH",
 			"amount":  199.00,
 			"message": fmt.Sprintf("order %s is served by the order service", orderID),
 		})
